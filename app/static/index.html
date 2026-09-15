@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="梅花易数双数、三数排盘；本互变、体用生克、四时旺衰、八卦万物属类及卦爻辞。">
+    <title>梅花易数排盘</title>
+    <link rel="stylesheet" href="static/styles.css">
+  </head>
+  <body>
+    <main>
+      <h1>梅花易数排盘</h1>
+      <p class="intro">以数起卦，静体动用。先看本互变，再看生克与辞象。</p>
+      <p class="notice">传统文化研习工具。吉凶为古籍规则下的倾向，不是现实预测，也不能替代医疗、法律、投资等专业判断。</p>
+      <noscript><p class="error">请启用 JavaScript 后使用排盘功能。</p></noscript>
+
+      <form id="divination-form">
+        <div class="field">
+          <label for="question">所占之事 <span class="muted">（选填）</span></label>
+          <textarea id="question" name="question" maxlength="500" placeholder="记录所问的人、事及关系；系统不会按文字猜测或生成断语。"></textarea>
+        </div>
+        <fieldset>
+          <legend>排盘方法</legend>
+          <div class="method-options">
+            <label class="inline"><input type="radio" name="method" value="two" checked> 双数法</label>
+            <label class="inline"><input type="radio" name="method" value="three"> 三数法</label>
+          </div>
+          <small id="method-description">前两数分别定上下卦；折算后的两个卦数加时辰数，除6取动爻。</small>
+        </fieldset>
+        <fieldset>
+          <legend>起卦数字</legend>
+          <div class="number-fields">
+            <label class="field" for="number-1">第一数 · 上卦
+              <input id="number-1" name="number_1" type="text" inputmode="numeric" pattern="[0-9]{1,100}" maxlength="100" autocomplete="off" placeholder="例如 12" aria-describedby="number-help" required>
+            </label>
+            <label class="field" for="number-2">第二数 · 下卦
+              <input id="number-2" name="number_2" type="text" inputmode="numeric" pattern="[0-9]{1,100}" maxlength="100" autocomplete="off" placeholder="例如 23" aria-describedby="number-help" required>
+            </label>
+            <label class="field" id="third-number-field" for="number-3" hidden>第三数 · 动爻
+              <input id="number-3" name="number_3" type="text" inputmode="numeric" pattern="[0-9]{1,100}" maxlength="100" autocomplete="off" placeholder="例如 6" aria-describedby="number-help" disabled>
+            </label>
+          </div>
+          <small id="number-help">接受0及非负整数，最多100位。除8余0作8；除6余0作6。爻位自下往上数。</small>
+        </fieldset>
+        <div class="field" id="hour-field">
+          <label for="hour">时辰 <span class="muted">（由你选择，不按设备时间推定）</span></label>
+          <select id="hour" name="hour" required>
+            <option value="" selected disabled>请选择时辰</option>
+            <option value="1">子 · 23:00–01:00 · 1</option>
+            <option value="2">丑 · 01:00–03:00 · 2</option>
+            <option value="3">寅 · 03:00–05:00 · 3</option>
+            <option value="4">卯 · 05:00–07:00 · 4</option>
+            <option value="5">辰 · 07:00–09:00 · 5</option>
+            <option value="6">巳 · 09:00–11:00 · 6</option>
+            <option value="7">午 · 11:00–13:00 · 7</option>
+            <option value="8">未 · 13:00–15:00 · 8</option>
+            <option value="9">申 · 15:00–17:00 · 9</option>
+            <option value="10">酉 · 17:00–19:00 · 10</option>
+            <option value="11">戌 · 19:00–21:00 · 11</option>
+            <option value="12">亥 · 21:00–23:00 · 12</option>
+          </select>
+          <small>各时段含起点、不含终点；23:00与00:00均属子时。</small>
+        </div>
+        <div class="field">
+          <label for="season">月令 · 四时旺衰</label>
+          <select id="season" name="season" aria-describedby="season-help" required>
+            <option value="" selected disabled>请选择所占时的月令</option>
+            <option value="spring">春 · 寅卯辰月</option>
+            <option value="summer">夏 · 巳午未月</option>
+            <option value="autumn">秋 · 申酉戌月</option>
+            <option value="winter">冬 · 亥子丑月</option>
+            <option value="earth">四季 · 辰戌丑未月末各十八天</option>
+          </select>
+          <small id="season-help">月令不等于公历月份。进入四个季月的末十八天时选“四季”，其余按春夏秋冬选；本页不自动推算交节时间。月令只影响旺衰，不改变卦象。</small>
+        </div>
+        <div class="form-actions">
+          <button id="chart-button" type="submit">排盘</button>
+          <span id="form-status" role="status"></span>
+        </div>
+      </form>
+
+      <p id="error" role="alert" hidden></p>
+      <section id="result" aria-label="排盘结果" tabindex="-1" hidden></section>
+
+      <footer>
+        <p>依据《梅花易数》整理的确定性规则；无模型调用，不保存所占之事。服务器模式把输入发往当前服务，静态模式在浏览器内排盘。</p>
+        <p><a href="https://www.quanxue.cn/qt_mingxiang/meihuaindex.html" target="_blank" rel="noopener noreferrer">《梅花易数》原书目录</a> · <a href="https://zh.wikisource.org/wiki/周易" target="_blank" rel="noopener noreferrer">《周易》古经</a></p>
+      </footer>
+    </main>
+    <!-- STATIC_BACKEND -->
+    <script src="static/app.js" defer></script>
+  </body>
+</html>
