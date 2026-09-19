@@ -52,16 +52,59 @@ def test_form_modes_order_full_text_and_no_stale_results(page):
     page.locator("#chart-button").click()
     expect(page.locator("#result")).to_be_visible()
     expect(page.locator(".hexagram-name")).to_have_text(["雷山小过 · 第62卦", "泽风大过 · 第28卦", "火山旅 · 第56卦"])
-    assert page.locator("#result h2").all_text_contents() == [
-        "卦象 · 本卦、互卦、变卦", "体用生克 · 大体吉凶", "体卦、用卦 · 卦宫万物属类",
-        "卦辞与动爻爻辞", "原书另有的规则与本页边界",
-    ]
+    assert page.locator("#result h2").all_text_contents() == ["盘", "吉凶判定", "卦象", "卦爻辞"]
+    assert page.locator("#result").evaluate("""node => {
+      let heading = "";
+      return Array.from(node.children).flatMap(child => {
+        if (child.tagName === "H2") heading = child.textContent;
+        return child.matches(".hexagrams, .table-wrap, details, .classical")
+          ? [heading] : [];
+      });
+    }""") == ["盘", "吉凶判定", "卦象", "卦爻辞", "卦爻辞", "卦爻辞"]
+    assert page.locator(".hexagram h3").all_text_contents() == ["本卦", "互卦", "变卦"]
     assert page.locator("#result img").count() == 0
+    assert page.locator("#result .rules").count() == 0
+    body = page.locator("#result").inner_text()
+    for removed in (
+        "排盘过程与取法", "生克关系与旺衰依据", "原书", "《梅花易数》", "quanxue.cn", "卦宫万物属类",
+        "爻位从下往上数", "互卦取二三四爻", "不是死亡预测",
+    ):
+        assert removed not in body, removed
     data = chart({"method": "two", "numbers": ["12", "23"], "hour": 1, "season": "autumn"})
     for item in data["imagery"]:
         for row in item["rows"]:
             assert row["text"] in page.locator(".imagery").inner_text()
-    assert page.locator(".classical blockquote").all_text_contents() == [item["text"] for item in data["texts"]]
+    assert page.locator(".imagery thead th").first.inner_text() == "类别"
+    assert "宫" not in page.locator(".imagery thead").inner_text()
+    influences = page.locator(".influences")
+    assert influences.locator("thead th").all_text_contents() == [
+        "阶段", "体", "用", "体用生克", "通则倾向", "旺衰修正",
+    ]
+    rows = influences.locator("tbody tr")
+    assert rows.count() == 4
+    assert [rows.nth(i).locator("th, td").nth(0).inner_text() for i in range(4)] == ["当下", "过程", "过程", "结果"]
+    for index, role in enumerate(["本卦用卦", "体互", "用互", "变卦用卦"]):
+        assert rows.nth(index).locator("th, td").nth(1).inner_text() == data["body"]["image"]
+        use_cell = rows.nth(index).locator("th, td").nth(2).inner_text()
+        assert role in use_cell and data["influences"][index]["trigram"]["image"] in use_cell
+    for label in page.locator(".hexagram small").all_text_contents():
+        assert not set(label) & set("乾兑离震巽坎艮坤"), label
+        assert "/" not in label, label
+    assert page.locator(".classical h3").all_text_contents() == [item["title"] for item in data["texts"]]
+    quotes = page.locator(".classical blockquote")
+    assert quotes.count() == 3
+    for index, item in enumerate(data["texts"]):
+        quote = quotes.nth(index).inner_text()
+        assert quotes.nth(index).locator("strong").all_text_contents() == [
+            entry["label"] for entry in item["passages"]
+        ]
+        positions = []
+        for passage in item["passages"]:
+            assert passage["text"] in quote
+            positions.append(quote.index(passage["label"]))
+        assert positions == sorted(positions), (index, quote)
+    assert page.locator(".classical a").count() == 3
+    assert page.locator(".classical a").first.get_attribute("href").startswith("https://zh.wikisource.org/")
     assert page.locator('[data-kind="original"] .moving').get_attribute("data-position") == "6"
     assert page.locator('[data-kind="mutual"] .moving').count() == 0
     page.locator('[name="method"][value="three"]').check()
@@ -156,3 +199,41 @@ def test_static_startup_failure_is_visible_without_submission(browser, tmp_path)
     expect(page.locator("#chart-button")).to_be_enabled()
     assert not errors
     page.close()
+
+
+def test_form_prose_removed_but_controls_and_accessibility_intact(page):
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    for removed in (
+        "传统文化研习工具", "以数起卦，静体动用", "接受0及非负整数", "四时旺衰",
+        "月令不等于公历月份", "由你选择，不按设备时间推定", "各时段含起点、不含终点",
+        "《梅花易数》", "quanxue.cn",
+    ):
+        assert removed not in html, removed
+    described = set(re.findall(r'aria-describedby="([^"]+)"', html))
+    ids = set(re.findall(r'id="([^"]+)"', html))
+    assert described <= ids, described - ids
+    assert page.locator("#method-description").inner_text() != ""
+    page.locator('[name="method"][value="three"]').check()
+    assert "不加时辰或前两数" not in page.locator("#method-description").inner_text()
+    assert page.locator('label[for="season"]').inner_text().strip() == "月令"
+    for selector in ("#number-1", "#number-2", "#season", "#question"):
+        assert page.locator(selector).count() == 1
+    assert page.locator("#number-1").get_attribute("pattern") == "[0-9]{1,100}"
+    assert page.locator("#number-1").get_attribute("required") is not None
+
+
+def test_trigram_labels_are_image_only_with_role_and_no_strength(page):
+    """AC8: exact standalone labels; strength survives only in the judgment table."""
+    fill_two(page)
+    page.locator("#chart-button").click()
+    expect(page.locator("#result")).to_be_visible()
+    assert "第6爻动 · 体：山 · 用：雷" in page.locator("#result").inner_text()
+    assert page.locator('[data-kind="original"] small').all_text_contents() == ["上卦：雷 · 用", "下卦：山 · 体"]
+    assert page.locator('[data-kind="mutual"] small').all_text_contents() == ["上卦：泽 · 用互", "下卦：风 · 体互"]
+    assert page.locator('[data-kind="transformed"] small').all_text_contents() == ["上卦：火 · 变用", "下卦：山 · 体"]
+    labels = page.locator(".hexagram small").all_text_contents()
+    labels.append(page.locator("#result p").nth(1).inner_text())
+    for label in labels:
+        assert not set(label) & set("旺相休囚死"), label
+    qualifications = page.locator(".influences tbody tr td:last-child").all_text_contents()
+    assert any(set(text) & set("旺相休囚死") for text in qualifications), qualifications

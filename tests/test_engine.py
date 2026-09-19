@@ -1,5 +1,7 @@
 import json
+import re
 from itertools import product
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,8 +10,17 @@ from app.engine import BY_LINES, HOURS, SEASONS, TRIGRAMS, chart, classics, hand
 from app.main import app
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def request(a="12", b="23", moving="6", **changes):
     return {"method": "three", "numbers": [a, b, moving], "season": "autumn", **changes}
+
+
+def mutual_source(original: list[int], changed: list[int], upper, lower) -> list[int]:
+    """AC6: pure 乾/坤 take the mutual from the changed lines; all others from the original."""
+    pure = upper.number == lower.number and upper.name in ("乾", "坤")
+    return changed if pure else original
 
 
 def test_every_hexagram_and_moving_line():
@@ -24,7 +35,8 @@ def test_every_hexagram_and_moving_line():
         assert result["original"]["lines"] == original
         assert result["transformed"]["lines"] == changed
         assert sum(a != b for a, b in zip(original, changed)) == 1
-        assert result["mutual"]["lines"] == original[1:4] + original[2:5]
+        source = mutual_source(original, changed, upper, lower)
+        assert result["mutual"]["lines"] == source[1:4] + source[2:5], (upper.name, lower.name, moving)
         assert result["body"]["number"] == (upper.number if moving <= 3 else lower.number)
         assert result["use"]["number"] == (lower.number if moving <= 3 else upper.number)
         assert result["moving_line"] == moving
@@ -33,9 +45,28 @@ def test_every_hexagram_and_moving_line():
         assert result["influences"][1]["trigram"] == result["mutual"][body_side]
         assert result["influences"][2]["trigram"] == result["mutual"][result["use_side"]]
         assert result["influences"][3]["trigram"] == result["transformed"][result["use_side"]]
-        assert result["texts"][0]["text"] == result["original"]["judgment"]
-        assert result["texts"][1]["text"] == result["original"]["line_texts"][moving - 1]
-        assert result["texts"][2]["text"] == result["transformed"]["judgment"]
+        assert [item["title"] for item in result["texts"]] == [
+            f"本卦 · {result['original']['name']}",
+            f"动爻 · 第{moving}爻",
+            f"变卦 · {result['transformed']['name']}",
+        ]
+        assert result["texts"][0]["passages"] == [
+            {"label": "卦辞", "text": result["original"]["judgment"]},
+            {"label": "彖辞", "text": result["original"]["tuan"]},
+            {"label": "象辞", "text": result["original"]["xiang"]},
+        ]
+        assert result["texts"][1]["passages"] == [
+            {"label": "爻辞", "text": result["original"]["line_texts"][moving - 1]},
+            {"label": "象辞", "text": result["original"]["line_xiang"][moving - 1]},
+        ]
+        assert result["texts"][2]["passages"] == [
+            {"label": "卦辞", "text": result["transformed"]["judgment"]},
+            {"label": "彖辞", "text": result["transformed"]["tuan"]},
+            {"label": "象辞", "text": result["transformed"]["xiang"]},
+        ]
+        assert all(item["source"].startswith("https://zh.wikisource.org/") for item in result["texts"])
+        assert [item["stage"] for item in result["influences"]] == ["当下", "过程", "过程", "结果"]
+        assert [item["role"] for item in result["influences"]] == ["本卦用卦", "体互", "用互", "变卦用卦"]
         for index, sentence in enumerate(result["original"]["line_texts"]):
             polarity = "九" if original[index] else "六"
             prefix = f"初{polarity}" if index == 0 else f"上{polarity}" if index == 5 else f"{polarity}{'二三四五'[index - 1]}"
@@ -55,9 +86,9 @@ def test_two_numbers_use_reduced_trigram_numbers_for_all_hours():
     result = chart({"method": "two", "numbers": ["8", "8"], "hour": 1, "season": "earth"})
     assert result["moving_line"] == 5
     assert result["original"]["name"] == "坤为地"
-    assert result["mutual"]["name"] == "坤为地"
+    assert result["mutual"]["name"] == "山地剥"
     assert result["transformed"]["name"] == "水地比"
-    assert "乾坤无互" in result["notes"][-1]
+    assert "notes" not in result
 
 
 def test_regression_examples_precision_and_season_isolation():
@@ -67,7 +98,6 @@ def test_regression_examples_precision_and_season_isolation():
     assert result["transformed"]["name"] == "火山旅"
     assert result["influences"][0]["relation"] == "用克体"
     assert result["influences"][3]["relation"] == "用生体"
-    assert "先阻后转顺" in result["progression"]
     plum = chart(request("2", "3", "1"))
     assert [plum[k]["name"] for k in ("original", "mutual", "transformed")] == ["泽火革", "天风姤", "泽山咸"]
     assert plum["body"]["name"] == "兑"
@@ -101,19 +131,100 @@ def test_all_element_relations_seasons_and_hours():
     assert HOURS[-1]["range"] == "21:00–23:00"
 
 
-def test_imagery_is_complete_and_rules_have_sources():
+FORBIDDEN_CATEGORIES = {
+    "万物属类（第二章）", "卦宫八卦（原文）", "卦应（第十二章）", "八卦类象",
+    "婚姻", "生产", "求名", "谋旺", "交易", "求利", "出行", "谒见", "官讼", "坟墓", "家宅",
+}
+DIVINATION_WORDS = ("吉", "凶", "宜", "忌", "利于", "不利", "主有", "占")
+SURVIVING_ENTITIES = {
+    "乾": ("天鹅", "良马", "老马", "瘠马", "驳马", "雪", "顶", "面颊", "丸子",
+           "停尸", "贵官之眷", "有声名之家", "刑官", "武职", "驿官"),
+    "兑": ("刑官", "武职", "伶官", "译官", "饮食不飧"),
+    "离": ("文官", "文书考案之士"),
+    "震": ("苍筤竹", "声名之家", "掌刑狱之官", "反生"),
+    "巽": ("寡发", "广颡", "多白眼", "风宪"),
+    "坎": ("美脊", "薄蹄", "鱼盐河泊之职", "宫律", "近水傍之墓"),
+    "艮": ("小石", "阍寺", "百禽", "东北之穴", "山中之穴"),
+    "坤": ("子母牛", "大舆", "百禽", "教官", "农官", "寡妇之家"),
+}
+SYNONYM_PAIRS = (
+    ("首", "头"), ("西北", "西北方"), ("白", "白色"), ("果蓏", "瓜果"), ("甘味", "甘"),
+    ("芋笋", "芋笋之物"), ("心疾", "心病"),
+)
+RESIDUAL_OUTCOMES = ("近利市三倍",)
+
+
+def tokens(rows):
+    return [token.strip() for row in rows for token in re.split(r"[、，。；,;]", row["text"]) if token.strip()]
+
+
+def test_curated_imagery_is_entity_only_and_deduplicated():
     data = classics()
     assert set(data["images"]) == set("乾兑离震巽坎艮坤")
+    assert "meihua" not in data["provenance"]
     for trigram in TRIGRAMS:
+        rows = data["images"][trigram.name]
+        assert rows, trigram.name
+        categories = [row["category"] for row in rows]
+        assert len(categories) == len(set(categories)), trigram.name
+        assert not set(categories) & FORBIDDEN_CATEGORIES, (trigram.name, set(categories) & FORBIDDEN_CATEGORIES)
+        assert not any(category.startswith("卦应补充") for category in categories), trigram.name
+        for row in rows:
+            assert set(row) == {"category", "text"}, row
+            assert row["text"].strip()
+            assert not re.search(r"第[一二三四五六七八九十]+章", row["category"] + row["text"]), row
+            assert not any(word in row["text"] for word in DIVINATION_WORDS), (trigram.name, row)
+        values = tokens(rows)
+        duplicates = {value for value in values if values.count(value) > 1}
+        assert not duplicates, (trigram.name, duplicates)
+        for first, second in SYNONYM_PAIRS:
+            assert not (first in values and second in values), (trigram.name, first, second)
+        for entity in SURVIVING_ENTITIES.get(trigram.name, ()):
+            assert entity in values, (trigram.name, entity)
+        for outcome in RESIDUAL_OUTCOMES:
+            assert outcome not in " ".join(values), (trigram.name, outcome)
         result = chart(request(str(trigram.number), str(trigram.number), "1"))
         for item in result["imagery"]:
-            assert item["rows"] == data["images"][trigram.name]
-            assert len(item["rows"]) >= 29
-            categories = [row["category"] for row in item["rows"]]
-            assert len(categories) == len(set(categories))
-            assert all(row["text"] for row in item["rows"])
-        assert len(result["additional_rules"]) == 9
-        assert all(rule["source"].startswith("https://www.quanxue.cn/") for rule in result["additional_rules"])
+            assert item["rows"] == rows
+        assert "additional_rules" not in result
+        assert "progression" not in result
+
+
+def test_classical_commentary_is_complete_and_matches_source():
+    data = classics()
+    assert len(data["hexagrams"]) == 64
+    for key, record in data["hexagrams"].items():
+        for field in ("judgment", "tuan", "xiang"):
+            assert record[field].strip(), (key, field)
+            assert not record[field].startswith(("彖曰", "象曰")), (key, field)
+        assert len(record["lines"]) == 6, key
+        assert len(record["line_xiang"]) == 6, key
+        assert all(text.strip() for text in record["line_xiang"]), key
+        assert all("用九" not in text and "用六" not in text for text in record["lines"] + record["line_xiang"]), key
+    assert sum(len(record["lines"]) for record in data["hexagrams"].values()) == 384
+    assert sum(len(record["line_xiang"]) for record in data["hexagrams"].values()) == 384
+    lv = data["hexagrams"]["1,2"]
+    assert lv["name"] == "天泽履"
+    assert lv["judgment"] == "履虎尾，不咥人，亨。"
+    assert lv["tuan"] == "履，柔履刚也。说而应乎干，是以履虎尾，不咥人，亨。刚中正，履帝位而不疚，光明也。"
+    assert lv["xiang"] == "上天下泽，履；君子以辨上下，定民志。"
+    assert lv["lines"][2] == "六三：眇能视，跛能履，履虎尾，咥人，凶。武人为于大君。"
+    assert lv["line_xiang"][2] == "眇能视，不足以有明也。跛能履，不足以与行也。咥人之凶，位不当也。武人为于大君，志刚也。"
+
+
+def test_no_source_book_citations_remain_in_shipped_code_and_data():
+    files = [
+        *(ROOT / "app").rglob("*.py"), *(ROOT / "app" / "static").iterdir(),
+        ROOT / "app" / "data" / "classics.json", ROOT / "scripts" / "import_classics.py",
+        ROOT / "scripts" / "build_static_site.py", ROOT / "web" / "pyodide-backend.js", ROOT / "README.md",
+    ]
+    for path in files:
+        if not path.is_file():
+            continue
+        content = path.read_text(encoding="utf-8")
+        assert "quanxue.cn" not in content, path
+        assert "《梅花易数》" not in content, path
+    assert "zh.wikisource.org" in (ROOT / "app" / "data" / "classics.json").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("payload", [

@@ -17,7 +17,6 @@ import time
 from urllib.parse import quote, unquote
 
 ROOT = Path(__file__).resolve().parents[1]
-MEIHUA = "https://www.quanxue.cn/qt_mingxiang/meihua/"
 WIKI = "https://zh.wikisource.org"
 TRIGRAMS = "乾兑离震巽坎艮坤"
 SYMBOLS = dict(zip(TRIGRAMS, "天泽火雷风水山地", strict=True))
@@ -37,6 +36,24 @@ def text(html: str) -> str:
     parser = TextParser()
     parser.feed(html)
     return re.sub(r"\s+", " ", "".join(parser.parts)).strip()
+
+
+def passage(html: str) -> str:
+    """Classical passage text: drop editorial <small> variant notes and all whitespace."""
+    return re.sub(r"\s+", "", text(re.sub(r"<small\b.*?</small>", "", html, flags=re.S | re.I)))
+
+
+SECTION = re.compile(r"<b>(易经：|易經：|彖曰：|象曰：|文言曰：)</b>")
+
+
+def sections(html: str) -> dict[str, str]:
+    """Split a Wikisource hexagram page into its labelled classical blocks."""
+    marks = list(SECTION.finditer(html))
+    found: dict[str, str] = {}
+    for index, mark in enumerate(marks):
+        end = marks[index + 1].start() if index + 1 < len(marks) else len(html)
+        found.setdefault(mark[1], html[mark.end():end])
+    return found
 
 
 class BluePassages(HTMLParser):
@@ -78,6 +95,24 @@ def fetch(url: str, cache: Path, name: str) -> str:
     return destination.read_text(encoding="utf-8")
 
 
+def commentary(html: str, title: str) -> tuple[str, str, list[str]]:
+    """Return 彖辞, 大象辞 and the six ordinary 小象辞 in line order."""
+    blocks = sections(html)
+    tuan = passage(blocks.get("彖曰：", ""))
+    xiang_block = blocks.get("象曰：", "")
+    head, _, tail = xiang_block.partition("<ol")
+    xiang = passage(head)
+    items = re.findall(r"<li\b[^>]*>(.*?)</li>", tail.partition("</ol>")[0], re.S | re.I)
+    # A single moving line never uses Qian's 用九 or Kun's 用六, nor their 小象.
+    line_xiang = [value for value in map(passage, items) if not value.startswith(("用九", "用六"))]
+    if not tuan or not xiang or len(line_xiang) != 6:
+        raise ValueError(
+            f"{title}: incomplete commentary: 彖={len(tuan)} chars, 象={len(xiang)} chars, "
+            f"{len(line_xiang)} 小象 (expected 6)"
+        )
+    return tuan, xiang, line_xiang
+
+
 def parse_hexagram(html: str, title: str, url: str) -> tuple[str, dict]:
     parser = BluePassages()
     parser.feed(html)
@@ -92,6 +127,7 @@ def parse_hexagram(html: str, title: str, url: str) -> tuple[str, dict]:
     if len(lines) != 6 or len(judgments) != expected_judgments or not pair or not number or not revision:
         raise ValueError(f"{title}: incomplete source: {len(lines)} lines, {len(judgments)} judgments, pair={pair}")
     lower, upper = pair.groups()
+    tuan, xiang, line_xiang = commentary(html, title)
     short = title.translate(NORMALIZE)
     name = f"{upper}为{SYMBOLS[upper]}" if upper == lower else f"{SYMBOLS[upper]}{SYMBOLS[lower]}{short}"
     key = f"{TRIGRAMS.index(upper) + 1},{TRIGRAMS.index(lower) + 1}"
@@ -103,50 +139,22 @@ def parse_hexagram(html: str, title: str, url: str) -> tuple[str, dict]:
     return key, {
         "number": numbers[number[1]], "name": name, "title": short,
         "judgment": "".join(judgments), "lines": lines,
+        "tuan": tuan, "xiang": xiang, "line_xiang": line_xiang,
         "source": url, "revision": revision[1],
     }
 
 
-def parse_images(chapters: dict[int, str]) -> dict:
-    images = {name: [] for name in TRIGRAMS}
-    paragraphs = lambda html: [text(p) for p in re.findall(r"<p\b[^>]*>(.*?)</p>", html, re.S | re.I)]
-    for p in paragraphs(chapters[3]):
-        if re.match(r"^[乾兑离震巽坎艮坤]：", p):
-            images[p[0]].append({"category": "万物属类（第二章）", "text": p[2:], "chapter": 3})
-    current = None
-    for tag, body in re.findall(r"<(h2|p)\b[^>]*>(.*?)</\1>", chapters[4], re.S | re.I):
-        value = text(body)
-        if tag == "h2":
-            match = re.search(r"万物属类：(.)卦", value)
-            current = match[1] if match else None
-        elif current:
-            if "天时：" in value:
-                palace, value = value.split("天时：", 1)
-                images[current].append({"category": "卦宫八卦（原文）", "text": palace, "chapter": 4})
-                value = f"天时：{value}"
-            if "：" in value:
-                category, content = value.split("：", 1)
-                images[current].append({"category": category, "text": content, "chapter": 4})
-        elif re.match(r"^[乾兑离震巽坎艮坤]：", value):
-            images[value[0]].append({"category": "八卦类象", "text": value[2:], "chapter": 4})
-    section = chapters[13].split("卦应（与前八卦类象", 1)
-    if len(section) != 2:
-        raise ValueError("Missing chapter 12 trigram correspondences")
-    current = None
-    for p in paragraphs(section[1]):
-        if re.match(r"^[乾兑离震巽坎艮坤]为", p):
-            current = p[0]
-            images[current].append({"category": "卦应（第十二章）", "text": p, "chapter": 13})
-        elif current and "：" in p:
-            category, content = p.split("：", 1)
-            images[current].append({"category": f"卦应补充·{category}", "text": content, "chapter": 13})
+DESTINATION = ROOT / "app" / "data" / "classics.json"
+
+
+def curated_images() -> dict:
+    """Imagery is hand-curated in the dataset; a reimport must preserve it unchanged."""
+    images = json.loads(DESTINATION.read_text(encoding="utf-8"))["images"]
+    if set(images) != set(TRIGRAMS):
+        raise ValueError(f"Curated imagery must cover all eight trigrams; found {sorted(images)}")
     for name, rows in images.items():
-        required = {"天时", "地理", "人物", "人事", "身体", "时序", "静物", "屋舍", "家宅", "婚姻",
-                    "饮食", "生产", "求名", "谋旺", "交易", "求利", "出行", "谒见", "疾病",
-                    "官讼", "坟墓", "方道", "五色", "数目", "五味", "八卦类象", "卦应（第十二章）"}
-        missing = required - {r["category"] for r in rows}
-        if missing:
-            raise ValueError(f"{name}: missing imagery categories: {missing}")
+        if not rows or any(set(row) != {"category", "text"} or not row["text"].strip() for row in rows):
+            raise ValueError(f"{name}: curated imagery rows must be non-empty category/text pairs")
     return images
 
 
@@ -168,24 +176,22 @@ def main():
         if key in hexagrams:
             raise ValueError(f"Duplicate hexagram: {key}")
         hexagrams[key] = record
-    chapters = {n: fetch(f"{MEIHUA}meihua{n:02}.html", args.cache, f"meihua{n:02}.html") for n in (3, 4, 13)}
-    images = parse_images(chapters)
+    images = curated_images()
     if {h["number"] for h in hexagrams.values()} != set(range(1, 65)):
         raise ValueError("Incomplete King Wen sequence")
     payload = {
         "provenance": {
             "retrieved": date.today().isoformat(),
-            "notice": "仅收公版古籍正文，不收现代译注。卦爻辞取维基文库简体显示，保留异体及原有标点；类象保留劝学网原文，包括古称、异文和疑似讹字。",
-            "meihua": MEIHUA,
+            "notice": "仅收公版古籍正文，不收现代译注。卦辞、爻辞、彖辞、象辞取维基文库简体显示，保留异体及原有标点；八卦类象为人工整理的物象条目。",
         },
         "hexagrams": dict(sorted(hexagrams.items())),
         "images": images,
     }
-    destination = ROOT / "app" / "data" / "classics.json"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    DESTINATION.parent.mkdir(parents=True, exist_ok=True)
+    DESTINATION.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Imported {len(hexagrams)} judgments, {sum(len(h['lines']) for h in hexagrams.values())} lines, "
-          f"{sum(len(v) for v in images.values())} imagery rows.")
+          f"{sum(len(h['line_xiang']) for h in hexagrams.values())} 小象, "
+          f"{sum(len(v) for v in images.values())} curated imagery rows.")
 
 
 if __name__ == "__main__":

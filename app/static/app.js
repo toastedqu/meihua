@@ -33,7 +33,7 @@ function updateMethod() {
   hour.required = two;
   document.querySelector("#method-description").textContent = two
     ? "前两数分别定上下卦；折算后的两个卦数加时辰数，除6取动爻。"
-    : "前两数分别定上下卦；仅第三数除6取动爻，不加时辰或前两数。";
+    : "前两数分别定上下卦；仅第三数除6取动爻。";
 }
 
 function invalidateResult() {
@@ -113,10 +113,6 @@ function details(title, open = false) {
   return node;
 }
 
-function trigramText(trigram) {
-  return `${trigram.name} / ${trigram.image} / ${trigram.element} · ${trigram.strength}`;
-}
-
 function renderHexagram(chart, title, kind, data) {
   const card = element("article", undefined, "hexagram");
   card.dataset.kind = kind;
@@ -141,106 +137,61 @@ function renderHexagram(chart, title, kind, data) {
     let role;
     if (kind === "mutual") role = side === data.body_side ? "体互" : "用互";
     else role = side === data.body_side ? "体" : (kind === "transformed" ? "变用" : "用");
-    card.append(element("small", `${side === "upper" ? "上" : "下"}卦：${trigramText(chart[side])}（${role}）`));
+    card.append(element("small", `${side === "upper" ? "上" : "下"}卦：${chart[side].image} · ${role}`));
   });
   return card;
 }
 
 function render(data) {
   const fragment = document.createDocumentFragment();
-  fragment.append(element("h2", "卦象 · 本卦、互卦、变卦"));
+
+  fragment.append(element("h2", "盘"));
   const cards = element("div", undefined, "hexagrams");
   cards.append(
-    renderHexagram(data.original, "本卦 · 当下", "original", data),
-    renderHexagram(data.mutual, "互卦 · 过程", "mutual", data),
-    renderHexagram(data.transformed, "变卦 · 结果", "transformed", data),
+    renderHexagram(data.original, "本卦", "original", data),
+    renderHexagram(data.mutual, "互卦", "mutual", data),
+    renderHexagram(data.transformed, "变卦", "transformed", data),
   );
   fragment.append(cards);
   if (data.request.question) fragment.append(element("p", `所占之事：${data.request.question}`));
   const method = data.request.method === "two" ? "双数法" : "三数法";
   fragment.append(element("p", `${method} · 数字 ${data.request.numbers.join("、")}${data.hour ? ` · ${data.hour.branch}时（${data.hour.number}）` : ""} · ${data.season.label}`));
-  const calculation = details("排盘过程与取法");
-  data.formulas.forEach((formula) => calculation.append(element("p", formula, "formula")));
-  data.notes.slice(0, 2).forEach((note) => calculation.append(element("p", note)));
-  calculation.append(sourceLink("https://www.quanxue.cn/qt_mingxiang/meihua/meihua02.html", "原书起卦与互卦说明"));
-  fragment.append(calculation);
-  if (data.notes.length > 4) fragment.append(element("p", data.notes[4], "notice"));
+  fragment.append(element("p", `第${data.moving_line}爻动 · 体：${data.body.image} · 用：${data.use.image}`));
 
-  fragment.append(element("h2", "体用生克 · 大体吉凶"));
-  const summary = element("div", undefined, "summary");
-  summary.append(
-    element("strong", data.summary),
-    element("p", `静体：${trigramText(data.body)}；动用：${trigramText(data.use)}。`),
-    element("p", data.progression),
-    element("p", data.notes[2], "muted"),
-  );
-  fragment.append(summary);
+  fragment.append(element("h2", "吉凶判定"));
   fragment.append(table(
-    ["阶段", "作用卦", "相对本卦之体", "通则倾向", "旺衰修正"],
+    ["阶段", "体", "用", "体用生克", "通则倾向", "旺衰修正"],
     data.influences.map((item) => [
-      `${item.stage} · ${item.role}`, trigramText(item.trigram),
+      item.stage, data.body.image, `${item.role} · ${item.trigram.image}`,
       item.relation, item.tendency, item.qualification,
     ]),
     "influences",
   ));
-  fragment.append(element("p", "表中“用”泛指该行的作用卦；体互、用互、变用均与原体比较。体互较切，过程可能吉凶并见；不相加打分，不把同一静体在变卦里重复计为一次助力。", "muted"));
-  const reasoning = details("生克关系与旺衰依据", true);
-  const seen = new Set();
-  data.influences.forEach((item) => {
-    if (!seen.has(item.relation)) {
-      reasoning.append(element("p", `${item.relation}：${item.explanation}`));
-      seen.add(item.relation);
-    }
-  });
-  reasoning.append(table(["月令", "旺", "相", "休", "囚", "死"], [
-    [data.season.label, ...["旺", "相", "休", "囚", "死"].map((key) => data.season.strengths[key])],
-  ]));
-  reasoning.append(element("p", data.notes[3]));
-  reasoning.append(
-    sourceLink(data.influences[0].source, "体用总诀"),
-    document.createTextNode(" · "),
-    sourceLink(data.influences[0].strength_source, "体用与衰旺论"),
-  );
-  fragment.append(reasoning);
 
-  fragment.append(element("h2", "体卦、用卦 · 卦宫万物属类"));
-  fragment.append(element("p", "这里的卦宫指体、用所属八卦的类象，不按纳甲六十四卦归宫另定体用。“全部”指所引章节已列条目，并非穷尽世间万物；保留古称、异文及原站疑似讹字，不将类象当作已发生事实。", "muted"));
-  fragment.append(element("p", "下列疾病、生产、婚姻、官讼等内容是古籍原文，不是对你的诊断、产育预测或行动建议。原文中的“死”等断语也不代表现实结论。", "notice"));
+  fragment.append(element("h2", "卦象"));
   const imagery = details("完整类象对照（可收起）", true);
   const categories = [...new Set(data.imagery.flatMap((item) => item.rows.map((row) => row.category)))];
   const maps = data.imagery.map((item) => new Map(item.rows.map((row) => [row.category, row.text])));
   imagery.append(table(
-    ["类别", ...data.imagery.map((item) => `${item.role} · ${item.trigram.name}宫（${item.trigram.element}）`)],
-    categories.map((category) => [category, ...maps.map((map) => map.get(category) ?? "原文未单列")]),
+    ["类别", ...data.imagery.map((item) => `${item.role} · ${item.trigram.image}`)],
+    categories.map((category) => [category, ...maps.map((map) => map.get(category) ?? "—")]),
     "imagery",
   ));
-  [3, 4, 13].forEach((chapter, index) => {
-    if (index) imagery.append(document.createTextNode(" · "));
-    imagery.append(sourceLink(`${data.provenance.meihua}meihua${String(chapter).padStart(2, "0")}.html`, ["第二章属类", "第三章完整类象", "第十二章卦应"][index]));
-  });
   fragment.append(imagery);
 
-  fragment.append(element("h2", "卦辞与动爻爻辞"));
-  fragment.append(element("p", "以下为《周易》古经原文，不是生成式解读。每次只有一爻动，乾坤也只取对应爻辞，不取用九、用六。", "muted"));
+  fragment.append(element("h2", "卦爻辞"));
   data.texts.forEach((item) => {
     const section = element("article", undefined, "classical");
-    section.append(element("h3", `${item.label} · ${item.name}`), element("blockquote", item.text), sourceLink(item.source, "维基文库原文"));
+    const quote = element("blockquote");
+    item.passages.forEach((entry) => {
+      const paragraph = element("p");
+      paragraph.append(element("strong", entry.label), document.createTextNode(`：${entry.text}`));
+      quote.append(paragraph);
+    });
+    section.append(element("h3", item.title), quote, sourceLink(item.source, "维基文库原文"));
     fragment.append(section);
   });
 
-  fragment.append(element("h2", "原书另有的规则与本页边界"));
-  const rules = element("ol", undefined, "rules");
-  data.additional_rules.forEach((rule) => {
-    const item = element("li");
-    item.append(
-      element("strong", rule.title),
-      element("p", rule.summary),
-      element("p", rule.status, "muted"),
-      sourceLink(rule.source, `第${rule.chapter - 1}章 · ${rule.section}`),
-    );
-    rules.append(item);
-  });
-  fragment.append(rules, element("p", `${data.provenance.notice} 资料收录：${data.provenance.retrieved}。`, "muted"));
   result.replaceChildren(fragment);
 }
 
