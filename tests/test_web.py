@@ -78,7 +78,7 @@ def test_form_modes_order_full_text_and_no_stale_results(page):
     assert "宫" not in page.locator(".imagery thead").inner_text()
     influences = page.locator(".influences")
     assert influences.locator("thead th").all_text_contents() == [
-        "阶段", "体", "用", "体用生克", "通则倾向", "旺衰修正",
+        "阶段", "体", "用", "生克", "吉凶", "旺衰",
     ]
     rows = influences.locator("tbody tr")
     assert rows.count() == 4

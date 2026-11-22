@@ -49,11 +49,11 @@ HOURS = [
     ))
 ]
 RELATIONS = {
-    "比和": "偏吉",
-    "用生体": "偏吉",
-    "体克用": "偏吉而须有力",
-    "体生用": "偏凶·耗泄",
-    "用克体": "偏凶·受克",
+    "比和": "吉·顺遂",
+    "用生体": "吉·进益",
+    "体克用": "吉",
+    "体生用": "凶·耗泄",
+    "用克体": "凶·受制",
 }
 
 
@@ -74,11 +74,11 @@ def parse_number(value: Any, label: str) -> int:
     if type(value) is int:
         # JavaScript cannot transmit larger numeric literals exactly; strings can.
         if not 0 <= value <= 9_007_199_254_740_991:
-            raise InputError(f"{label}必须为非负安全整数；更大的数字请以字符串提交（最多100位）。")
+            raise InputError(f"{label}过大，请以字符串提交（最多100位）。")
         return value
     if isinstance(value, str) and re.fullmatch(r"[0-9]{1,100}", value.strip()):
         return int(value.strip())
-    raise InputError(f"{label}须为0或非负整数，最多100位；不接受负数、小数、科学计数法或空值。")
+    raise InputError(f"{label}须为非负整数（最多100位）。")
 
 
 def validate(payload: Any) -> dict[str, Any]:
@@ -98,12 +98,12 @@ def validate(payload: Any) -> dict[str, Any]:
     hour = payload.get("hour")
     if method == "two":
         if type(hour) is not int or not 1 <= hour <= 12:
-            raise InputError("双数法必须从十二时辰中选择时辰（1至12）。")
+            raise InputError("请选择时辰。")
     elif hour is not None:
-        raise InputError("三数法不使用时辰，请勿提交hour。")
+        raise InputError("三数法不用时辰。")
     season = payload.get("season")
     if not isinstance(season, str) or season not in SEASONS:
-        raise InputError("请选择月令；四季指辰戌丑未月末各十八天，不是整个土月。")
+        raise InputError("请选择月令。")
     question = payload.get("question", "")
     if not isinstance(question, str) or len(question) > 500:
         raise InputError("所占之事必须是500字以内的文字。")
@@ -140,18 +140,18 @@ def hexagram(lines: tuple[int, ...], season: str) -> dict[str, Any]:
 def influence(body: Trigram, other: Trigram, stage: str, role: str, season: str) -> dict[str, Any]:
     kind = relation(body.element, other.element)
     tendency = RELATIONS[kind]
-    own_strength, other_strength = strength(body.element, season), strength(other.element, season)
+    own, theirs = strength(body.element, season), strength(other.element, season)
+    own_strong, their_strong = own in "旺相", theirs in "旺相"
     if kind == "用生体":
-        qualifier = "生体者旺相，助力得时。" if other_strength in "旺相" else "虽见生体，生体者休囚死，助力不宜夸大。"
+        qualifier = f"{other.image}{theirs}，助力{'足' if their_strong else '弱'}。"
     elif kind == "用克体":
-        qualifier = ("克体者旺相，受制之势需留意。" if other_strength in "旺相" else "克体者休囚死，其克力按时令减看。")
-        qualifier += "体旺相，较能承受。" if own_strength in "旺相" else "体亦休囚死，承受力不足。"
+        qualifier = f"{other.image}{theirs}，克力{'重' if their_strong else '轻'}；体{own}，{'能' if own_strong else '难'}承受。"
     elif kind == "体克用":
-        qualifier = "体旺相，较有制用之力。" if own_strength in "旺相" else "体休囚死，不可只凭体克用便断成事。"
+        qualifier = f"体{own}，{'能制用' if own_strong else '制不住，吉减'}。"
     elif kind == "体生用":
-        qualifier = "体旺相而向外泄气，仍有付出。" if own_strength in "旺相" else "体休囚死又泄气，耗损更须留意。"
+        qualifier = f"体{own}，{'耗而不伤' if own_strong else '耗损重'}。"
     else:
-        qualifier = "同气得时，相助较有力。" if own_strength in "旺相" else "虽同气相助，但皆未得旺相，不等于力量充足。"
+        qualifier = f"体{own}，{'同气相助有力' if own_strong else '同气相助力弱'}。"
     return {
         "stage": stage, "role": role, "trigram": trigram_info(other, season),
         "relation": kind, "tendency": tendency, "qualification": qualifier,

@@ -32,8 +32,8 @@ function updateMethod() {
   hour.disabled = !two;
   hour.required = two;
   document.querySelector("#method-description").textContent = two
-    ? "前两数分别定上下卦；折算后的两个卦数加时辰数，除6取动爻。"
-    : "前两数分别定上下卦；仅第三数除6取动爻。";
+    ? "两数定上下卦，加时辰定动爻。"
+    : "前两数定上下卦，第三数定动爻。";
 }
 
 function invalidateResult() {
@@ -160,7 +160,7 @@ function render(data) {
 
   fragment.append(element("h2", "吉凶判定"));
   fragment.append(table(
-    ["阶段", "体", "用", "体用生克", "通则倾向", "旺衰修正"],
+    ["阶段", "体", "用", "生克", "吉凶", "旺衰"],
     data.influences.map((item) => [
       item.stage, data.body.image, `${item.role} · ${item.trigram.image}`,
       item.relation, item.tendency, item.qualification,
@@ -169,7 +169,7 @@ function render(data) {
   ));
 
   fragment.append(element("h2", "卦象"));
-  const imagery = details("完整类象对照（可收起）", true);
+  const imagery = details("类象对照", true);
   const categories = [...new Set(data.imagery.flatMap((item) => item.rows.map((row) => row.category)))];
   const maps = data.imagery.map((item) => new Map(item.rows.map((row) => [row.category, row.text])));
   imagery.append(table(

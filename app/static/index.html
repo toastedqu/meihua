@@ -15,7 +15,7 @@
       <form id="divination-form">
         <div class="field">
           <label for="question">所占之事 <span class="muted">（选填）</span></label>
-          <textarea id="question" name="question" maxlength="500" placeholder="记录所问的人、事及关系；系统不会按文字猜测或生成断语。"></textarea>
+          <textarea id="question" name="question" maxlength="500" placeholder="例如：这次面试能否通过"></textarea>
         </div>
         <fieldset>
           <legend>排盘方法</legend>
@@ -23,7 +23,7 @@
             <label class="inline"><input type="radio" name="method" value="two" checked> 双数法</label>
             <label class="inline"><input type="radio" name="method" value="three"> 三数法</label>
           </div>
-          <small id="method-description">前两数分别定上下卦；折算后的两个卦数加时辰数，除6取动爻。</small>
+          <small id="method-description">两数定上下卦，加时辰定动爻。</small>
         </fieldset>
         <fieldset>
           <legend>起卦数字</legend>
@@ -60,7 +60,7 @@
         <div class="field">
           <label for="season">月令</label>
           <select id="season" name="season" required>
-            <option value="" selected disabled>请选择所占时的月令</option>
+            <option value="" selected disabled>请选择月令</option>
             <option value="spring">春 · 寅卯辰月</option>
             <option value="summer">夏 · 巳午未月</option>
             <option value="autumn">秋 · 申酉戌月</option>
@@ -78,7 +78,6 @@
       <section id="result" aria-label="排盘结果" tabindex="-1" hidden></section>
 
       <footer>
-        <p>确定性规则排盘；无模型调用，不保存所占之事。服务器模式把输入发往当前服务，静态模式在浏览器内排盘。</p>
         <p><a href="https://zh.wikisource.org/wiki/周易" target="_blank" rel="noopener noreferrer">《周易》古经 · 维基文库</a></p>
       </footer>
     </main>
