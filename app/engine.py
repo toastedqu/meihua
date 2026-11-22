@@ -68,7 +68,7 @@ def classics() -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def image_categories() -> tuple[str, ...]:
-    # Merge every trigram's category order so optional rows (家世, 形状, …) keep their place.
+    # Merge every trigram's category order so optional rows (植物, …) keep their place.
     order: list[str] = []
     for rows in classics()["images"].values():
         previous = None
