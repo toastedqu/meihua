@@ -286,3 +286,6 @@ def test_imagery_lists_each_involved_trigram_once():
                 assert set(names) == involved, (upper.name, lower.name, moving)
                 roles = "、".join(item["role"] for item in result["imagery"]).split("、")
                 assert sorted(roles) == sorted(["体", "用", "体互", "用互", "变用"])
+                categories = result["imagery_categories"]
+                assert categories[-1] == "疾病"
+                assert set(categories) == {row["category"] for item in result["imagery"] for row in item["rows"]}

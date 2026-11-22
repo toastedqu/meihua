@@ -78,7 +78,7 @@ Content-Type: application/json
 
 `method` 为 `two` 或 `three`；`season` 为 `spring`、`summer`、`autumn`、`winter` 或 `earth`。三数法不得提交非空 `hour`。未知字段、非法输入均返回明确的 `422 {"detail":"…"}`。
 
-响应含 `original`、`mutual`、`transformed`、`moving_line`、`body`、`use`、`influences`、`imagery`、`texts`。卦象记录含 `judgment`、`tuan`、`xiang`、`line_texts`、`line_xiang`；`texts` 为三段文章，每段含 `title`、`passages`（`label` 与 `text`）及 `source`。`lines` 自下而上，以1为阳、0为阴。数字在响应中仍为字符串。静态桥接 `app.engine.handle()` 返回 `{status, ok, payload}` 封装，HTTP 返回其中的 `payload` 与相同状态码。
+响应含 `original`、`mutual`、`transformed`、`moving_line`、`body`、`use`、`influences`、`imagery`、`imagery_categories`（类象行的统一顺序）、`texts`。卦象记录含 `judgment`、`tuan`、`xiang`、`line_texts`、`line_xiang`；`texts` 为三段文章，每段含 `title`、`passages`（`label` 与 `text`）及 `source`。`lines` 自下而上，以1为阳、0为阴。数字在响应中仍为字符串。静态桥接 `app.engine.handle()` 返回 `{status, ok, payload}` 封装，HTTP 返回其中的 `payload` 与相同状态码。
 
 ## 数据出处与更新
 

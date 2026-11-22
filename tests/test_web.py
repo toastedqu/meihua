@@ -75,6 +75,7 @@ def test_form_modes_order_full_text_and_no_stale_results(page):
         for row in item["rows"]:
             assert row["text"] in page.locator(".imagery").inner_text()
     assert page.locator(".imagery thead th").first.inner_text() == "类别"
+    assert page.locator(".imagery tbody th").all_text_contents() == data["imagery_categories"]
     assert "宫" not in page.locator(".imagery thead").inner_text()
     influences = page.locator(".influences")
     assert influences.locator("thead th").all_text_contents() == [

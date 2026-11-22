@@ -170,7 +170,7 @@ function render(data) {
 
   fragment.append(element("h2", "卦象"));
   const imagery = details("类象对照", true);
-  const categories = [...new Set(data.imagery.flatMap((item) => item.rows.map((row) => row.category)))];
+  const categories = data.imagery_categories;
   const maps = data.imagery.map((item) => new Map(item.rows.map((row) => [row.category, row.text])));
   imagery.append(table(
     ["类别", ...data.imagery.map((item) => `${item.role} · ${item.trigram.image}`)],

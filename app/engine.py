@@ -66,6 +66,19 @@ def classics() -> dict[str, Any]:
     return json.loads((Path(__file__).parent / "data" / "classics.json").read_text(encoding="utf-8"))
 
 
+@lru_cache(maxsize=1)
+def image_categories() -> tuple[str, ...]:
+    # Merge every trigram's category order so optional rows (家世, 形状, …) keep their place.
+    order: list[str] = []
+    for rows in classics()["images"].values():
+        previous = None
+        for category in (row["category"] for row in rows):
+            if category not in order:
+                order.insert(order.index(previous) + 1 if previous else 0, category)
+            previous = category
+    return tuple(order)
+
+
 def reduced(value: int, modulus: int) -> int:
     return value % modulus or modulus
 
@@ -192,6 +205,7 @@ def chart(payload: Any) -> dict[str, Any]:
         {"role": "、".join(names), "trigram": trigram_info(trigram, season), "rows": classics()["images"][trigram.name]}
         for trigram, names in roles.items()
     ]
+    present = {row["category"] for item in imagery for row in item["rows"]}
 
     def article(title: str, record: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -212,6 +226,7 @@ def chart(payload: Any) -> dict[str, Any]:
         "body_side": body_side, "use_side": use_side,
         "original": original, "mutual": mutual, "transformed": transformed,
         "influences": influences, "imagery": imagery,
+        "imagery_categories": [c for c in image_categories() if c in present],
         "texts": [
             article(f"本卦 · {original['name']}", original),
             {
