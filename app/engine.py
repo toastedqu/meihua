@@ -184,9 +184,13 @@ def chart(payload: Any) -> dict[str, Any]:
         influence(body, mutual_use, "过程", "用互", season),
         influence(body, changed_use, "结果", "变卦用卦", season),
     ]
+    # One column per distinct trigram across 本卦/互卦/变卦; repeated trigrams merge their roles.
+    roles: dict[Trigram, list[str]] = {}
+    for role, trigram in (("体", body), ("用", use), ("体互", mutual_body), ("用互", mutual_use), ("变用", changed_use)):
+        roles.setdefault(trigram, []).append(role)
     imagery = [
-        {"role": role, "trigram": trigram_info(trigram, season), "rows": classics()["images"][trigram.name]}
-        for role, trigram in (("体卦", body), ("用卦", use))
+        {"role": "、".join(names), "trigram": trigram_info(trigram, season), "rows": classics()["images"][trigram.name]}
+        for trigram, names in roles.items()
     ]
 
     def article(title: str, record: dict[str, Any]) -> dict[str, Any]:

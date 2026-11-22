@@ -137,13 +137,13 @@ FORBIDDEN_CATEGORIES = {
 }
 DIVINATION_WORDS = ("吉", "凶", "宜", "忌", "利于", "不利", "主有", "占")
 SURVIVING_ENTITIES = {
-    "乾": ("天鹅", "良马", "老马", "瘠马", "驳马", "雪", "顶", "面颊", "丸子",
+    "乾": ("天鹅", "良马", "老马", "瘠马", "驳马", "雪", "顶", "面颊",
            "停尸", "贵官之眷", "有声名之家", "刑官", "武职", "驿官"),
     "兑": ("刑官", "武职", "伶官", "译官", "饮食不飧"),
     "离": ("文官", "文书考案之士"),
     "震": ("苍筤竹", "声名之家", "掌刑狱之官", "反生"),
     "巽": ("寡发", "广颡", "多白眼", "风宪"),
-    "坎": ("美脊", "薄蹄", "鱼盐河泊之职", "宫律", "近水傍之墓"),
+    "坎": ("美脊", "薄蹄", "鱼盐河泊之职", "近水傍之墓"),
     "艮": ("小石", "阍寺", "百禽", "东北之穴", "山中之穴"),
     "坤": ("子母牛", "大舆", "百禽", "教官", "农官", "寡妇之家"),
 }
@@ -167,6 +167,7 @@ def test_curated_imagery_is_entity_only_and_deduplicated():
         assert rows, trigram.name
         categories = [row["category"] for row in rows]
         assert len(categories) == len(set(categories)), trigram.name
+        assert categories[-1] == "疾病", trigram.name
         assert not set(categories) & FORBIDDEN_CATEGORIES, (trigram.name, set(categories) & FORBIDDEN_CATEGORIES)
         assert not any(category.startswith("卦应补充") for category in categories), trigram.name
         for row in rows:
@@ -185,7 +186,8 @@ def test_curated_imagery_is_entity_only_and_deduplicated():
             assert outcome not in " ".join(values), (trigram.name, outcome)
         result = chart(request(str(trigram.number), str(trigram.number), "1"))
         for item in result["imagery"]:
-            assert item["rows"] == rows
+            assert item["rows"] == classics()["images"][item["trigram"]["name"]]
+        assert any(item["trigram"]["name"] == trigram.name for item in result["imagery"])
         assert "additional_rules" not in result
         assert "progression" not in result
 
@@ -270,3 +272,17 @@ def test_http_browser_response_parity():
             assert response.json() == json.loads(handle("/api/v1/chart", invalid))["payload"]
         assert client.post("/api/v1/divinations", json={}).status_code == 404
     assert json.loads(handle("/unknown", "{}"))["status"] == 404
+
+
+def test_imagery_lists_each_involved_trigram_once():
+    for upper in TRIGRAMS:
+        for lower in TRIGRAMS:
+            for moving in range(1, 7):
+                result = chart(request(str(upper.number), str(lower.number), str(moving)))
+                names = [item["trigram"]["name"] for item in result["imagery"]]
+                assert len(names) == len(set(names))
+                involved = {result[key][side]["name"] for key in ("original", "mutual", "transformed")
+                            for side in ("upper", "lower")}
+                assert set(names) == involved, (upper.name, lower.name, moving)
+                roles = "、".join(item["role"] for item in result["imagery"]).split("、")
+                assert sorted(roles) == sorted(["体", "用", "体互", "用互", "变用"])
